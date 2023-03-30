@@ -1,4 +1,8 @@
-NOTE: I, Falco Girgis, have forked the original kokke repo and have merged in several of the feature and bugfix pull requests that have been pending on the main repo for quite sometime. 
+Falco Girgis's ChangeList:
+- merged several bugfixes that were just sitting as pending PRs
+- merged several features taht were just sitting as pending PRs
+- added CMake support
+- exposed configuration definitions as Cmake options
 
 ![CI](https://github.com/kokke/tiny-regex-c/workflows/CI/badge.svg)
 # tiny-regex-c
