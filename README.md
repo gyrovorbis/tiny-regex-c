@@ -1,3 +1,5 @@
+NOTE: I, Falco Girgis, have forked the original kokke repo and have merged in several of the feature and bugfix pull requests that have been pending on the main repo for quite sometime. 
+
 ![CI](https://github.com/kokke/tiny-regex-c/workflows/CI/badge.svg)
 # tiny-regex-c
 # A small regex implementation in C
