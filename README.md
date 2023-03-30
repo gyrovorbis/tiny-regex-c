@@ -1,9 +1,9 @@
-Falco Girgis's ChangeList:
+Falco Girgis's Changelist:
 - merged several bugfixes that were just sitting as pending PRs
 - merged several features taht were just sitting as pending PRs
 - added CMake support
 - exposed configuration definitions as Cmake options
-
+#
 ![CI](https://github.com/kokke/tiny-regex-c/workflows/CI/badge.svg)
 # tiny-regex-c
 # A small regex implementation in C
