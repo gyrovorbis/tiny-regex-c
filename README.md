@@ -1,6 +1,6 @@
 Falco Girgis's Changelist:
 - merged several bugfixes that were just sitting as pending PRs
-- merged several features taht were just sitting as pending PRs
+- merged several features that were just sitting as pending PRs
 - added CMake support
 - exposed configuration definitions as Cmake options
 #
