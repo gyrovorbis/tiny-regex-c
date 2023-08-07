@@ -2,7 +2,13 @@ Falco Girgis's Changelist:
 - merged several bugfixes that were just sitting as pending PRs
 - merged several features that were just sitting as pending PRs
 - added CMake support
-- exposed configuration definitions as Cmake options
+- exposed configuration definitions as CMake options
+- modified internal symbol representation to be far more compact
+  - everything is byte-packed as tightly as humanly possible
+  - character class substrings are now stored within the symbol 
+  - far more cache coherent
+- added support for user-supplied compiled pattern storage
+  - allows you to heap allocate and maintain more than one compiled pattern
 #
 ![CI](https://github.com/kokke/tiny-regex-c/workflows/CI/badge.svg)
 # tiny-regex-c
@@ -21,6 +27,7 @@ The main design goal of this library is to be small, correct, self contained and
 
 ### Notable features and omissions
 - Small code and binary size: 500 SLOC, ~3kb binary for x86. Statically #define'd memory usage / allocation.
+  - NOTE: support added for user-specified storage -- Falco
 - No use of dynamic memory allocation (i.e. no calls to `malloc` / `free`).
 - To avoid call-stack exhaustion, iterative searching is preferred over recursive by default (can be changed with a pre-processor flag).
 - No support for capturing groups or named capture: `(^P<name>group)` etc.
