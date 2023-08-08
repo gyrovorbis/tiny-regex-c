@@ -49,6 +49,9 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size);
 /* Compile regex string pattern to a regex_t-array, using internal buffer */
 re_t re_compile(const char* pattern);
 
+/* Reconstruct a regex string from a compiled pattern */
+void re_string(re_t pattern, char* buffer, unsigned* size);
+
 /* Find matches of the compiled pattern inside text. */
 int re_matchp(re_t pattern, const char* text, int* matchlength);
 

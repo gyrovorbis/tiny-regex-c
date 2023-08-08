@@ -9,6 +9,11 @@ Falco Girgis's Changelist:
   - far more cache coherent
 - added support for user-supplied compiled pattern storage
   - allows you to heap allocate and maintain more than one compiled pattern
+- Fixed multi matches {n}, {,m}, {n,}, {n, m}, which were only partially working previously
+- Added stringifier to (sort of) go back to string form from a compiled regexp
+- Broke print() function
+- Broke recursive pattern matching
+
 #
 ![CI](https://github.com/kokke/tiny-regex-c/workflows/CI/badge.svg)
 # tiny-regex-c
