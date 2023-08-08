@@ -284,8 +284,9 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
         }
         else if (2 != sscanf (&pattern[i], "{%hd,%hd}", &n, &m))
         {
-          int o;
-          if (!(1 == sscanf (&pattern[i], "{%hd,}%n", &n, &o) && pattern[o] == '\0') ||
+            int o;// = i + 4;
+
+          if (!(2 == sscanf (&pattern[i], "{%hd,}%n", &n, &o) && pattern[o] == '\0') ||
               n == 0 || n > 32767)
           {
             if (1 != sscanf (&pattern[i], "{,%hd}", &m) ||
