@@ -44,13 +44,19 @@ extern "C"{
 typedef struct regex_t* re_t;
 
 /* Compile regex string pattern to custom buffer, returning # of bytes used */
-re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size);
+re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* bytes);
 
 /* Compile regex string pattern to a regex_t-array, using internal buffer */
 re_t re_compile(const char* pattern);
 
 /* Reconstruct a regex string from a compiled pattern */
 void re_string(re_t pattern, char* buffer, unsigned* size);
+
+/* Returns the size in bytes of a compiled pattern */
+unsigned re_size(re_t pattern);
+
+/* Compares two compiled patterns for equality */
+int re_compare(re_t pattern1, re_t pattern2);
 
 /* Find matches of the compiled pattern inside text. */
 int re_matchp(re_t pattern, const char* text, int* matchlength);

@@ -34,7 +34,8 @@
  *   '(...)'    Group
  *
  * TODO:
- *   multibyte support (mbtowc, esp. UTF-8. maybe hardcode UTF-8 without libc locale insanity)
+ *   - multibyte support (mbtowc, esp. UTF-8. maybe hardcode UTF-8 without libc locale insanity)
+ *   - \b word boundary support
  */
 
 
@@ -184,9 +185,6 @@ int re_matchp(re_t pattern, const char* text, int* matchlength)
 
 re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
 {
-    /* The size of this static array substantiates the static RAM usage of this module.
-        MAX_REGEXP_LEN is the max number number of bytes in the expression. */
-    //static unsigned char re_data[MAX_REGEXP_LEN] = { 0 };
     memset(re_data, 0, *size);
 
      char c;     /* current char in pattern   */
@@ -285,7 +283,7 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
         else if (2 != sscanf (&pattern[i], "{%hd,%hd}", &n, &m))
         {
           int o;
-          if (!(1 == sscanf (&pattern[i], "{%hd,}%n", &n, &o) && pattern[o] == '\0') ||
+          if (!(2 == sscanf (&pattern[i], "{%hd,}%n", &n, &o) && pattern[o] == '\0') ||
               n == 0 || n > 32767)
           {
             if (1 != sscanf (&pattern[i], "{,%hd}", &m) ||
@@ -425,36 +423,35 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
         {
           if (pattern[i] == '\\')
           {
-#if 0
-            if ((char*)getnext(re_compiled) >= (char*)re_data + sizeof(re_data) - sizeof(re_compiled))
+
+            if (&re_compiled->u.data[charIdx] >= (char*)re_data + bytes)
             {
               //fputs("exceeded internal buffer!\n", stderr);
               return 0;
             }
-#endif
+
             if (pattern[i+1] == 0) /* incomplete pattern, missing non-zero char after '\\' */
             {
               return 0;
             }
             re_compiled->u.data[charIdx++] = pattern[i++];
           }
-#if 0
-          else if ((char*)getnext(re_compiled) >= (char*)re_data + sizeof(re_data) - sizeof(re_compiled))
+          else if (&re_compiled->u.data[charIdx] >= (char*)re_data + bytes)
           {
               //fputs("exceeded internal buffer!\n", stderr);
               return 0;
           }
-#endif
+
           re_compiled->u.data[charIdx++] = pattern[i];
         }
-#if 0
-        if ((char*)getnext(re_compiled) >= (char*)re_data + sizeof(re_data) - sizeof(re_compiled))
+
+        if (&re_compiled->u.data[charIdx] >= (char*)re_data + bytes)
         {
             /* Catches cases such as [00000000000000000000000000000000000000][ */
             //fputs("exceeded internal buffer!\n", stderr);
             return 0;
         }
-#endif
+
         /* Null-terminate string end */
         re_compiled->u.data[charIdx++] = '\0';
       } break;
@@ -476,6 +473,8 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
   }
   /* 'UNUSED' is a sentinel used to indicate end-of-pattern */
   re_compiled->type = UNUSED;
+
+  /* Calculate final, compressed actual size. */
   *size = (unsigned char*)getnext(re_compiled) - re_data;
 
   return (re_t) re_data;
@@ -486,6 +485,59 @@ re_t re_compile(const char* pattern)
     static unsigned char buffer[MAX_REGEXP_OBJECTS * sizeof(regex_t)];
     unsigned size = sizeof(buffer);
     return re_compile_to(pattern, buffer, &size);
+}
+
+unsigned re_size(re_t pattern)
+{
+    unsigned bytes = 0;
+
+    while(pattern)
+    {
+        bytes += getsize(pattern);
+
+        if(pattern->type == UNUSED)
+            break;
+
+        pattern = getnext(pattern);
+    }
+
+    return bytes;
+}
+
+int re_compare(re_t pattern1, re_t pattern2) {
+    int result = 0;
+
+    const unsigned totalSize1 = re_size(pattern1);
+    const unsigned totalSize2 = re_size(pattern2);
+
+    if(totalSize1 > totalSize2)
+        return 1;
+    else if(totalSize2 > totalSize1)
+        return -1;
+
+    while(pattern1 && pattern2) {
+        unsigned size1 = getsize(pattern1);
+        unsigned size2 = getsize(pattern2);
+
+        if(size1 > size2)
+            return 1;
+        else if(size2 > size1)
+            return -1;
+
+        result = memcmp(pattern1, pattern2, size1);
+
+        if(result != 0)
+            return result;
+
+        if(pattern1->type == UNUSED)
+            break;
+
+        pattern1 = getnext(pattern1);
+        pattern2 = getnext(pattern2);
+
+    }
+
+    return result;
 }
 
 #define re_string_cat_fmt_(buff, ...) \
@@ -576,6 +628,22 @@ void re_string(regex_t* pattern, char* buffer, unsigned* size)
     else if (pattern->type == GROUPEND)
     {
       re_string_cat_fmt_(buffer, " )");
+    }
+    else if(pattern->type == BEGIN)
+    {
+        re_string_cat_fmt_(buffer, "^");
+    }
+    else if(pattern->type == END)
+    {
+        re_string_cat_fmt_(buffer, "$");
+    }
+    else if(pattern->type == QUESTIONMARK)
+    {
+        re_string_cat_fmt_(buffer, "?");
+    }
+    else if(pattern->type == DIGIT)
+    {
+        re_string_cat_fmt_(buffer, "\\d");
     }
     //re_string_cat_fmt_(buffer, "\n");
     ++i;
