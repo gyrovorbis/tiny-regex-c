@@ -600,7 +600,7 @@ void re_string(regex_t* pattern, char* buffer, unsigned* size)
     }
     else if (pattern->type == CHAR)
     {
-      re_string_cat_fmt_(buffer, " '%c'", pattern->u.ch);
+      re_string_cat_fmt_(buffer, "%c", pattern->u.ch);
     }
     else if (pattern->type == TIMES)
     {
