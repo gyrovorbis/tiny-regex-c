@@ -79,7 +79,7 @@ typedef struct regex_t
         char  ch; /*      the character itself             */
         char  data[];
     };
-    unsigned char group_num;   /*  OR the number of group patterns. */
+    unsigned char group_size;   /*  OR the number of group patterns. */
     unsigned char group_start; /*  OR for GROUPEND, the start index of the group. */
     struct {
       unsigned short n;  /* match n times */
@@ -94,14 +94,17 @@ static unsigned getsize(regex_t* pattern)
     switch(pattern->type) {
     case GROUP:
     case GROUPEND:
-        size += sizeof(unsigned char);
+        size += sizeof(unsigned short) * 2;
+        break;
     case TIMES:
     case TIMES_N:
     case TIMES_M:
     case TIMES_NM:
         size += sizeof(unsigned short) * 2;
+        break;
     case CHAR:
-        size += sizeof(char);
+        size += sizeof(unsigned short) * 2;
+        break;
     case CHAR_CLASS:
     case INV_CHAR_CLASS:
         size += sizeof(unsigned short) + strlen(&pattern->u.data[-1]);
@@ -115,6 +118,14 @@ static unsigned getsize(regex_t* pattern)
 static re_t getnext(regex_t* pattern)
 {
   return (re_t)(((unsigned char*)pattern) + getsize(pattern));
+}
+
+static re_t getindex(regex_t* pattern, int index)
+{
+    for(int i = 1; i <= index; ++i)
+        pattern = getnext(pattern);
+
+    return pattern;
 }
 
 /* Private function declarations: */
@@ -234,7 +245,7 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
         if (p && *(p - 1) != '\\')
         {
           re_compiled->type = GROUP;
-          re_compiled->u.group_num = 0;
+          re_compiled->u.group_size = 0;
         }
         /* '(' without matching ')' */
         else
@@ -244,17 +255,18 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
       case ')':
       {
         int nestlevel = 0;
-        int k = j;
+        int k = j - 1;
         /* search back to next innermost groupstart */
         for (; k >= 0; k--)
         {
-          if (k < j && re_compiled->type == GROUPEND)
+          regex_t* cur = getindex((regex_t*)re_data, k);
+          if (k < j && cur->type == GROUPEND)
             nestlevel++;
-          else if (re_compiled->type == GROUP)
+          else if (cur->type == GROUP)
           {
             if (nestlevel == 0)
             {
-              re_compiled->u.group_num = j - k - 1;
+              cur->u.group_size = j - k - 1;
               re_compiled->type = GROUPEND;
               re_compiled->u.group_start = k; // index of group
               break;
@@ -620,7 +632,7 @@ void re_string(regex_t* pattern, char* buffer, unsigned* size)
     }
     else if (pattern->type == GROUP)
     {
-      group_end = i + pattern->u.group_num;
+      group_end = i + pattern->u.group_size;
       if (group_end >= MAX_REGEXP_OBJECTS)
         return;
       re_string_cat_fmt_(buffer, " (");
@@ -763,7 +775,7 @@ static int matchcharclass(char c, const char* str)
 
 static int matchone(regex_t* p, char c)
 {
-  DEBUG_P("ONE %d matches %c?\n", p.type, c);
+  DEBUG_P("ONE %d matches %c?\n", p->type, c);
   switch (p->type)
   {
     case DOT:            return  matchdot(c);
@@ -923,9 +935,10 @@ static int matchgroup(regex_t* p, const char* text, int* matchlength)
 {
   int pre = *matchlength;
   int num_patterns = 0, length = pre;
-  const regex_t* groupend = &p[p->u.group_num + 1];
-  DEBUG_P("does GROUP (%u) match %s?\n", (unsigned)p->u.group_num, text);
-  p++;
+  regex_t* groupstart = p;
+  const regex_t* groupend = getindex(p, p->u.group_size + 1);//&p[p->u.group_size + 1];
+  DEBUG_P("does GROUP (%u) match %s?\n", (unsigned)p->u.group_size, text);
+  p = getnext(p);
   while (p < groupend)
   {
     if (p->type == UNUSED) // only with invalid external compiles
@@ -937,9 +950,10 @@ static int matchgroup(regex_t* p, const char* text, int* matchlength)
       return 0;
     }
     DEBUG_P("GROUP did match %.*s (len %d, patterns %d)\n", length, text-*matchlength, *matchlength, num_patterns);
-    text += length;
-    p += num_patterns;
-    *matchlength += length;
+    int delta = length - *matchlength;
+    text += delta;
+    p = getindex(groupstart, num_patterns);
+    *matchlength += delta;
   }
   DEBUG_P("ENDGROUP did match %s (len %d, patterns %d)\n", text-*matchlength, *matchlength, num_patterns);
   return 1;
@@ -1031,8 +1045,18 @@ static int matchpattern(regex_t* pattern, const char* text, int* matchlength, in
     }
     else if (pattern->type == GROUP)
     {
-      *num_patterns = pattern->u.group_num + 1; // plus GROUPEND
-      return matchgroup(pattern, text, matchlength);
+      const int beforelen = *matchlength;
+      const int retval = matchgroup(pattern, text, matchlength);
+
+      if(!retval) return 0;
+      else {
+        text += (*matchlength - beforelen);
+        pre = *matchlength;
+        (*num_patterns) += pattern->u.group_size + 2;
+        pattern = getindex(pattern, pattern->u.group_size + 2);
+        if(*text == '\0') return retval;
+        continue;
+      }
     }
     else if ((pattern->type == END) && next_pattern->type == UNUSED)
     {
