@@ -72,7 +72,7 @@ enum regex_type_e { UNUSED, DOT, BEGIN, END, QUESTIONMARK, STAR, PLUS, CHAR,
 
 typedef struct regex_t
 {
-  unsigned char type;     /* CHAR, STAR, etc.                      */
+  unsigned short type;     /* CHAR, STAR, etc.                      */
   union
   {
     struct {
@@ -90,7 +90,7 @@ typedef struct regex_t
 
 static unsigned getsize(regex_t* pattern)
 {
-    unsigned size = sizeof(unsigned char);
+    unsigned size = sizeof(unsigned short);
     switch(pattern->type) {
     case GROUP:
     case GROUPEND:
@@ -111,6 +111,9 @@ static unsigned getsize(regex_t* pattern)
     default:
         break;
     }
+
+    if(size % 2)
+        ++size;
 
     return size;
 }
