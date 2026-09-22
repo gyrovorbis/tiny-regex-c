@@ -10,9 +10,16 @@ Falco Girgis's Changelist:
 - added support for user-supplied compiled pattern storage
   - allows you to heap allocate and maintain more than one compiled pattern
 - Fixed multi matches `{n}`, `{,m}`, `{n,}`, `{n, m}`, which were only partially working previously
+  - a `{n}` that wasn't the first element advanced the text by the cumulative match length
+  - a `{n}` ending at end-of-text returned success without matching the rest of the pattern
+- Implemented real alternation: `|` separates whole alternatives, tried left to right
+  - previously `hello|world` behaved as `hell(o|world)`, so only single-character alternatives worked
+  - works at top level and inside groups; `^` and `$` bind per-alternative
+- Fixed quantifiers inside groups, which previously hung the matcher (`(ab?)c` on `ac`)
+  - matching now continues through `)` into the rest of the pattern, so `?`/`*`/`+` inside a group backtrack against what follows it
+- Fixed `(ab)c` matching `ab` (group ending at end-of-text returned success early)
 - Added stringifier to (sort of) go back to string form from a compiled regexp
-- Broke print() function
-- Broke recursive pattern matching
+- Broke print() function (and with it the upstream `make test` harness)
 
 #
 ![CI](https://github.com/kokke/tiny-regex-c/workflows/CI/badge.svg)
@@ -31,21 +38,20 @@ Supports a subset of the syntax and semantics of the Python standard library imp
 The main design goal of this library is to be small, correct, self contained and use few resources while retaining acceptable performance and feature completeness. Clarity of the code is also highly valued.
 
 ### Notable features and omissions
-- Small code and binary size: 500 SLOC, ~3kb binary for x86. Statically #define'd memory usage / allocation.
+- Small code and binary size: ~1100 lines including comments, ~5.5kb binary for x86. Statically #define'd memory usage / allocation.
   - NOTE: support added for user-specified storage -- Falco
 - No use of dynamic memory allocation (i.e. no calls to `malloc` / `free`).
-- To avoid call-stack exhaustion, iterative searching is preferred over recursive by default (can be changed with a pre-processor flag).
+- Matching is recursive; nesting depth is bounded by the number of quantifiers and groups in the pattern, not by the text length.
 - No support for capturing groups or named capture: `(^P<name>group)` etc.
-- Thorough testing : [exrex](https://github.com/asciimoo/exrex) is used to randomly generate test-cases from regex patterns, which are fed into the regex code for verification. Try `make test` to generate a few thousand tests cases yourself. 
-- Verification-harness for [KLEE Symbolic Execution Engine](https://klee.github.io), see [formal verification.md](https://github.com/kokke/tiny-regex-c/blob/master/formal_verification.md).
+- Quantifiers (`?`, `*`, `+`, `{n}`...) apply to the single preceding atom or character class only. They cannot be applied to a group: `(ab)+` does not match anything.
+- Upstream's [exrex](https://github.com/asciimoo/exrex)-based random test harness (`make test`) and [KLEE](https://klee.github.io) verification harness (see [formal verification.md](https://github.com/kokke/tiny-regex-c/blob/master/formal_verification.md)) are present but no longer build against this fork. Coverage lives in libGimbal's `GblPatternTestSuite`.
 - Provides character length of matches.
-- Compiled for x86 using GCC 7.2.0 and optimizing for size, the binary takes up ~2-3kb code space and allocates ~0.5kb RAM :
+- Compiled for x86 with GCC 16 and optimizing for size:
   ```
   > gcc -Os -c re.c
   > size re.o
       text     data     bss     dec     hex filename
-      2404        0     304    2708     a94 re.o
-      
+      5466        0     180    5646    160e re.o
   ```
 
 
@@ -56,8 +62,20 @@ This is the public / exported API:
 /* Typedef'd pointer to hide implementation details. */
 typedef struct regex_t* re_t;
 
-/* Compiles regex string pattern to a regex_t-array. */
+/* Compiles regex string pattern into the internal static buffer. */
 re_t re_compile(const char* pattern);
+
+/* Compiles regex string pattern into a caller-supplied buffer, returning the number of bytes used. */
+re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* bytes);
+
+/* Returns the size in bytes of a compiled pattern. */
+unsigned re_size(re_t pattern);
+
+/* Compares two compiled patterns for equality. */
+int  re_compare(re_t pattern1, re_t pattern2);
+
+/* Reconstructs (approximately) a regex string from a compiled pattern. */
+void re_string(re_t pattern, char* buffer, unsigned* size);
 
 /* Finds matches of the compiled pattern inside text. */
 int  re_matchp(re_t pattern, const char* text, int* matchlength);
@@ -65,6 +83,13 @@ int  re_matchp(re_t pattern, const char* text, int* matchlength);
 /* Finds matches of pattern inside text (compiles first automatically). */
 int  re_match(const char* pattern, const char* text, int* matchlength);
 ```
+
+`re_compile()` uses one internal buffer, so only the most recently compiled pattern is valid; use `re_compile_to()` to keep several compiled patterns alive at once.
+
+### Configuration
+- `RE_DOT_MATCHES_NEWLINE` (default `1`): whether `.` matches `\r` and `\n`.
+- `MAX_REGEXP_OBJECTS` (default `30`): maximum number of symbols in a pattern compiled with `re_compile()`.
+- `MAX_CHAR_CLASS_LEN` (default `40`): maximum total length of character-class contents in a pattern.
 
 ### Supported regex-operators
 The following features / regex-operators are supported by this library.
@@ -90,8 +115,8 @@ The following features / regex-operators are supported by this library.
   -  `\d`       Digits, [0-9]
   -  `\D`       Non-digits
   -  `\xXX`     Hex-encoded byte
-  -  `|`        Branch Or, e.g. a|A, \w|\s
-  -  `(...)`    Group
+  -  `|`        Alternation, e.g. `cat|dog`, `(ab|cd)e`. Alternatives are tried left to right; the first that matches wins.
+  -  `(...)`    Group. Non-capturing, and cannot be quantified (see above).
 
 ### Usage
 Compile a regex from ASCII-string (char-array) to a custom pattern structure using `re_compile()`.
@@ -127,7 +152,8 @@ if (match_idx != -1)
 For more usage examples I encourage you to look at the code in the `tests`-folder.
 
 ### TODO
-- Fix length with nested groups, e.g. `((ab)|b)+` =~ abbb => 7 not 4.
+- Quantifiers on groups, e.g. `(ab)+`, `((ab)|b)+`.
+- Restore `re_print()` and the upstream test harness.
 - Add `example.c` that demonstrates usage.
 - Add `tests/test_perf.c` for performance and time measurements.
 - Add optional multibyte support (e.g. UTF-8). On non-wchar systems roll our own.
@@ -135,12 +161,12 @@ For more usage examples I encourage you to look at the code in the `tests`-folde
 - Non-greedy, lazy quantifiers (??, +?, *?, {n,m}?)
 - Case-insensitive option or API. `re_matchi()`
 - `re_match_capture()` with groups.
-- '.' may not match '\r' nor '\n', unless a single-line option is given.
+- '.' may not match '\r' nor '\n', unless a single-line option is given (see `RE_DOT_MATCHES_NEWLINE`).
 
 ### FAQ
 - *Q: What differentiates this library from other C regex implementations?*
 
-  A: Well, the small size for one. 500 lines of C-code compiling to 2-3kb ROM, using very little RAM.
+  A: Well, the small size for one. About 1100 lines of C compiling to ~5kb ROM, using very little RAM.
 
 ### License
 All material in this repository is in the public domain.

@@ -4,16 +4,7 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-option(TINY_REGEX_C_DOT_MATCHES_NEWLINE "'.' matches '\r' + '\n'"   ON)
-option(TINY_REGEX_C_RECURSIVE_MATCHING  "Enable recursive matching" OFF)
-
-if(!TINY_REGEX_C_DOT_MATCHES_NEWLINE)
-    add_definitions(-DRE_DOT_MATCHES_NEWLINE=0)
-endif()
-
-if(TINY_REGEX_C_RECURSIVE_MATCHING)
-    add_definitions(-DRECURSIVE_RE)
-endif()
+option(TINY_REGEX_C_DOT_MATCHES_NEWLINE "'.' matches '\r' + '\n'" ON)
 
 project(TinyRegexC 
     VERSION 
@@ -25,14 +16,15 @@ project(TinyRegexC
     LANGUAGES C)
 
 add_library(TinyRegexC STATIC
-            re.h 
+            re.h
             re.c)
 
-target_include_directories(libGimbal
+target_include_directories(TinyRegexC
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:>
-        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+if(NOT TINY_REGEX_C_DOT_MATCHES_NEWLINE)
+    target_compile_definitions(TinyRegexC PUBLIC RE_DOT_MATCHES_NEWLINE=0)
+endif()
