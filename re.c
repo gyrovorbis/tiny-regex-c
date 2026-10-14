@@ -744,6 +744,7 @@ static int matchmetachar(char c, const char* str)
 
 static int matchcharclass(char c, const char* str)
 {
+  const char* start = str;
   do
   {
     if (matchrange(c, str))
@@ -768,7 +769,7 @@ static int matchcharclass(char c, const char* str)
     {
       if (c == '-')
       {
-        if ((str[-1] == '\0') || (str[1] == '\0'))
+        if ((str == start) || (str[1] == '\0'))
             return 1;
         // else continue
       }
