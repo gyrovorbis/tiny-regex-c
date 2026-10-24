@@ -205,6 +205,16 @@ int re_matchp(re_t pattern, const char* text, int* matchlength)
   return -1;
 }
 
+/* May an object start at p? Only if a whole regex_t AND the 2-byte UNUSED end
+ * marker after it still fit inside the buffer. sizeof(re_compiled) is the size
+ * of a POINTER (8 bytes on a 64-bit host, 4 on a 32-bit target), while an
+ * object plus the end marker needs up to 8; and the \x branch below can add up
+ * to three more objects in one pass of the compile loop. */
+static int re_fits(const void* p, const unsigned char* re_data, unsigned bytes)
+{
+  return (const unsigned char*)p + sizeof(regex_t) + sizeof(unsigned short) < re_data + bytes;
+}
+
 re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
 {
     memset(re_data, 0, *size);
@@ -214,10 +224,12 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
      int j = 0;  /* index into re_data    */
      unsigned bytes = *size;
      *size = 0;
+     if (bytes < sizeof(unsigned short)) /* not even the end marker fits */
+       return 0;
 
      regex_t *re_compiled = (regex_t*)(re_data);
 
-  while (pattern[i] != '\0' && ((char*)re_compiled < (char*)re_data + bytes - sizeof(re_compiled)))
+  while (pattern[i] != '\0' && re_fits(re_compiled, re_data, bytes))
   {
     c = pattern[i];
 
@@ -372,10 +384,12 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
                 re_compiled->u.ch = '\\';
                 re_compiled->type = CHAR;
 
+                if (!re_fits(getnext(re_compiled), re_data, bytes)) break; /* no room for 'x' */
                 re_compiled = getnext(re_compiled);
                 re_compiled->u.ch = 'x';
                 re_compiled->type = CHAR;
 
+                if (!re_fits(getnext(re_compiled), re_data, bytes)) break; /* no room for the non-hex character */
                 re_compiled = getnext(re_compiled);
                 re_compiled->u.ch = pattern[i];
                 re_compiled->type = CHAR;
@@ -390,16 +404,19 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
                 re_compiled->u.ch = '\\';
                 re_compiled->type = CHAR;
 
+                if (!re_fits(getnext(re_compiled), re_data, bytes)) break; /* no room for 'x' */
                 re_compiled = getnext(re_compiled);
                 re_compiled->u.ch = 'x';
                 re_compiled->type = CHAR;
 
+                if (!re_fits(getnext(re_compiled), re_data, bytes)) break; /* no room for the hex digit */
                 re_compiled = getnext(re_compiled);
                 re_compiled->u.ch = pattern[i-1];
                 re_compiled->type = CHAR;
 
                 if (pattern[i])
                 {
+                  if (!re_fits(getnext(re_compiled), re_data, bytes)) break; /* no room for the character after it */
                   re_compiled = getnext(re_compiled);
                   re_compiled->u.ch = pattern[i];
                   re_compiled->type = CHAR;
@@ -447,7 +464,8 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
           if (pattern[i] == '\\')
           {
 
-            if (&re_compiled->u.data[charIdx] >= (char*)re_data + bytes)
+            /* room for BOTH bytes: the backslash and the character it escapes */
+            if (&re_compiled->u.data[charIdx + 1] >= (char*)re_data + bytes)
             {
               //fputs("exceeded internal buffer!\n", stderr);
               return 0;
@@ -477,6 +495,9 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
 
         /* Null-terminate string end */
         re_compiled->u.data[charIdx++] = '\0';
+        /* the class fits, but the end marker after it must fit too */
+        if ((char*)getnext(re_compiled) + sizeof(unsigned short) > (char*)re_data + bytes)
+          return 0;
       } break;
 
       case '\0': // EOL (dead-code)
@@ -490,7 +511,8 @@ re_t re_compile_to(const char* pattern, unsigned char* re_data, unsigned* size)
         re_compiled->u.ch = c;
       } break;
     }
-    i += 1;
+    if (pattern[i] != '\0') /* a branch that stopped on the terminator ("\x4", "\x", "[ab") stays on it */
+      i += 1;
     j += 1;
     re_compiled = getnext(re_compiled);
   }
